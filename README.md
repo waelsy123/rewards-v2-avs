@@ -80,6 +80,8 @@ npm run extract:abis
 # Start the Operator application
 npm run start:operator
 
+# Submit rewards
+npm run start:rewards
 ```
 
 ### Create Hello-World-AVS Tasks

@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.9;
 
-import {ECDSAServiceManagerBase} from
-    "@eigenlayer-middleware/src/unaudited/ECDSAServiceManagerBase.sol";
+import {ECDSAServiceManagerBase} from "@eigenlayer-middleware/src/unaudited/ECDSAServiceManagerBase.sol";
 import {ECDSAStakeRegistry} from "@eigenlayer-middleware/src/unaudited/ECDSAStakeRegistry.sol";
 import {IServiceManager} from "@eigenlayer-middleware/src/interfaces/IServiceManager.sol";
-import {ECDSAUpgradeable} from
-    "@openzeppelin-upgrades/contracts/utils/cryptography/ECDSAUpgradeable.sol";
+import {ECDSAUpgradeable} from "@openzeppelin-upgrades/contracts/utils/cryptography/ECDSAUpgradeable.sol";
 import {IERC1271Upgradeable} from "@openzeppelin-upgrades/contracts/interfaces/IERC1271Upgradeable.sol";
 import {IHelloWorldServiceManager} from "./IHelloWorldServiceManager.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
@@ -32,33 +30,17 @@ contract HelloWorldServiceManager is ECDSAServiceManagerBase, IHelloWorldService
     mapping(address => mapping(uint32 => bytes)) public allTaskResponses;
 
     modifier onlyOperator() {
-        require(
-            ECDSAStakeRegistry(stakeRegistry).operatorRegistered(msg.sender),
-            "Operator must be the caller"
-        );
+        require(ECDSAStakeRegistry(stakeRegistry).operatorRegistered(msg.sender), "Operator must be the caller");
         _;
     }
 
-    constructor(
-        address _avsDirectory,
-        address _stakeRegistry,
-        address _rewardsCoordinator,
-        address _delegationManager
-
-    )
-        ECDSAServiceManagerBase(
-            _avsDirectory,
-            _stakeRegistry,
-            _rewardsCoordinator,
-            _delegationManager
-        )
+    constructor(address _avsDirectory, address _stakeRegistry, address _rewardsCoordinator, address _delegationManager)
+        ECDSAServiceManagerBase(_avsDirectory, _stakeRegistry, _rewardsCoordinator, _delegationManager)
     {}
 
     /* FUNCTIONS */
     // NOTE: this function creates new task, assigns it a taskId
-    function createNewTask(
-        string memory name
-    ) external returns (Task memory) {
+    function createNewTask(string memory name) external returns (Task memory) {
         // create a new task struct
         Task memory newTask;
         newTask.name = name;
@@ -72,26 +54,21 @@ contract HelloWorldServiceManager is ECDSAServiceManagerBase, IHelloWorldService
         return newTask;
     }
 
-    function respondToTask(
-        Task calldata task,
-        uint32 referenceTaskIndex,
-        bytes memory signature
-    ) external {
+    function respondToTask(Task calldata task, uint32 referenceTaskIndex, bytes memory signature) external {
         // check that the task is valid, hasn't been responsed yet, and is being responded in time
         require(
             keccak256(abi.encode(task)) == allTaskHashes[referenceTaskIndex],
             "supplied task does not match the one recorded in the contract"
         );
         require(
-            allTaskResponses[msg.sender][referenceTaskIndex].length == 0,
-            "Operator has already responded to the task"
+            allTaskResponses[msg.sender][referenceTaskIndex].length == 0, "Operator has already responded to the task"
         );
 
         // The message that was signed
         bytes32 messageHash = keccak256(abi.encodePacked("Hello, ", task.name));
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
         bytes4 magicValue = IERC1271Upgradeable.isValidSignature.selector;
-        if (!(magicValue == ECDSAStakeRegistry(stakeRegistry).isValidSignature(ethSignedMessageHash,signature))){
+        if (!(magicValue == ECDSAStakeRegistry(stakeRegistry).isValidSignature(ethSignedMessageHash, signature))) {
             revert();
         }
 
@@ -100,5 +77,20 @@ contract HelloWorldServiceManager is ECDSAServiceManagerBase, IHelloWorldService
 
         // emitting event
         emit TaskResponded(referenceTaskIndex, task, msg.sender);
+    }
+
+    function submitOperatorDirectedRewards(
+        IRewardsCoordinator.OperatorDirectedRewardsSubmission[] calldata operatorDirectedRewardsSubmissions
+    ) external {
+        // todo: acl
+        // require(msg.sender == authorizedAddress, "Not authorized");
+
+        // approve RewardsCoordinator to transfer tokens
+        // IERC20(operatorDirectedRewardsSubmissions[0].token).approve(address(rewardsCoordinator), totalAmount);
+
+        // Submit the operator-directed rewards
+        IRewardsCoordinator(rewardsCoordinator).createOperatorDirectedAVSRewardsSubmission(
+            address(this), operatorDirectedRewardsSubmissions
+        );
     }
 }

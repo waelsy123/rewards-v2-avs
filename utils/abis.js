@@ -1,54 +1,76 @@
 const fs = require('fs');
 const path = require('path');
 
-const abiDir = 'abis';
-const contractsDir = 'contracts';
-const artifactsDir = path.join(contractsDir, 'out');
-
-const contractsToExtract = [
+const configFile = 'contractsToExtract.json';
+const defaultContracts = [
   'IAVSDirectory',
   'IDelegationManager',
   'ECDSAStakeRegistry',
   'HelloWorldServiceManager'
 ];
+const abiDir = 'abis';
+const contractsDir = 'contracts';
+const artifactsDir = path.join(contractsDir, 'out');
 
-if (!fs.existsSync(abiDir)) {
-  fs.mkdirSync(abiDir);
+function ensureDir(dirPath) {
+  if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath);
 }
 
-function checkArtifactsDirectory() {
-  if (!fs.existsSync(artifactsDir)) {
-    console.error(`The artifacts directory '${artifactsDir}' does not exist.`);
-    console.log('Please compile your contracts first using "forge build"');
-    process.exit(1);
+function readConfig() {
+  try {
+    const data = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+    return Array.isArray(data) && data.length ? data : defaultContracts;
+  } catch {
+    return defaultContracts;
   }
+}
 
-  const files = fs.readdirSync(artifactsDir);
-  if (files.length === 0) {
-    console.error(`The artifacts directory '${artifactsDir}' is empty.`);
-    console.log('Please compile your contracts first using "forge build" or confirm the path is correct.');
+function validateArtifacts(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    console.error(`Missing: ${dirPath}`);
+    console.log('Run "forge build" first');
     process.exit(1);
   }
+  const content = fs.readdirSync(dirPath);
+  if (!content.length) {
+    console.error(`Empty: ${dirPath}`);
+    console.log('Run "forge build" or verify the path');
+    process.exit(1);
+  }
+}
+
+function readContractData(filePath) {
+  const fileContent = fs.readFileSync(filePath, 'utf8');
+  const parsed = JSON.parse(fileContent);
+  if (!parsed.abi) throw new Error('ABI not found in contract JSON');
+  return parsed.abi;
 }
 
 function extractAbi(contractName) {
-  const outputPath = path.join(artifactsDir, `${contractName}.sol`, `${contractName}.json`);
-  const abiOutputPath = path.join(abiDir, `${contractName}.json`);
-
-  try {
-    const contractData = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
-    const abi = JSON.stringify(contractData.abi, null, 2);
-    fs.writeFileSync(abiOutputPath, abi);
-    console.log(`Extracted ABI for ${contractName}`);
-  } catch (error) {
-    console.error(`Error extracting ABI for ${contractName}:`, error.message);
-  }
+  const jsonPath = path.join(artifactsDir, `${contractName}.sol`, `${contractName}.json`);
+  const abiPath = path.join(abiDir, `${contractName}.json`);
+  const abi = readContractData(jsonPath);
+  fs.writeFileSync(abiPath, JSON.stringify(abi, null, 2));
+  console.log(`Extracted ABI for ${contractName}`);
 }
 
-checkArtifactsDirectory();
-
-for (const contractName of contractsToExtract) {
-  extractAbi(contractName);
+function extractAllAbis() {
+  const contracts = readConfig();
+  contracts.forEach(contract => {
+    try {
+      extractAbi(contract);
+    } catch (e) {
+      console.error(`Failed to extract ABI for ${contract}: ${e.message}`);
+    }
+  });
 }
 
-console.log('ABI extraction complete. Check the "abis" directory for the output.');
+function logSummary() {
+  const files = fs.readdirSync(abiDir);
+  console.log(`ABI extraction complete. ${files.length} files in '${abiDir}'.`);
+}
+
+ensureDir(abiDir);
+validateArtifacts(artifactsDir);
+extractAllAbis();
+logSummary();
